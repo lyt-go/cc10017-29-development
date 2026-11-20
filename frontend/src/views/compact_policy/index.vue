@@ -27,6 +27,20 @@
       <button class="btn ghost" data-testid="reset" type="button" @click="resetFilters">重置条件</button>
     </form>
 
+    <section class="recovery-check" data-testid="recovery-check">
+      <label class="filter-item">
+        <span>核对目标表</span>
+        <input v-model="checkTable" data-testid="check-table" placeholder="按目标表名核对补数恢复清单" />
+      </label>
+      <button class="btn" data-testid="run-check" type="button" @click="runCheck">核对可合并范围</button>
+      <p v-if="checkResult" data-testid="check-result" :class="checkResult.can_merge ? 'check-ok' : 'check-block'">
+        {{ checkResult.can_merge ? '补数恢复清单已放行，可合并区间：' + (checkResult.mergeable_ranges.join('、') || '无') : checkResult.reasons.join('；') }}
+      </p>
+      <p v-if="checkResult && checkResult.source_batches.length" class="check-batches">
+        跨模块交接来源批次：{{ checkResult.source_batches.join('、') }}
+      </p>
+    </section>
+
     <table class="data-table">
       <thead>
         <tr>
@@ -88,7 +102,7 @@ type Row = Record<string, string | number | null>
 
 const ENDPOINT = '/api/compact_policy'
 const columns = ["策略编号", "目标表名", "触发条件", "合并并发", "目标文件大小", "最小文件数", "保留快照数", "执行时间窗口"]
-const actions = ["提交校验", "标记生效", "停用策略"]
+const actions = ["提交校验", "标记生效", "停用策略", "合并文件"]
 const statuses = ["草稿", "待校验", "已生效", "已停用"]
 const metricNames = ["清理策略总数", "待校验策略", "已生效策略"]
 
@@ -100,10 +114,12 @@ const filterFields = columns.slice(0, 3)
 const showCreate = ref(false)
 const creating = ref(false)
 const createValues = ref<Record<string, string>>({})
+const checkTable = ref('orders')
+const checkResult = ref<any>(null)
 const stats = computed(() => [
   { label: metricNames[0], value: total.value },
   { label: metricNames[1], value: rows.value.filter((row) => row.status === statuses[1]).length },
-  { label: metricNames[2], value: rows.value.filter((row) => row.status === statuses[statuses.length - 1]).length },
+  { label: metricNames[2], value: rows.value.filter((row) => row.status === statuses[2]).length },
 ])
 
 function resetFilters() {
@@ -152,6 +168,17 @@ async function submitCreate() {
   }
 }
 
+async function runCheck() {
+  errorMessage.value = ''
+  try {
+    const response = await request(`${ENDPOINT}/recovery-check?target_table=${encodeURIComponent(checkTable.value)}`)
+    if (!response.ok) throw new Error('补数恢复清单核对失败')
+    checkResult.value = await response.json()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '补数恢复清单核对失败'
+  }
+}
+
 async function runAction(action: string, row: Row) {
   errorMessage.value = ''
   try {
@@ -159,10 +186,12 @@ async function runAction(action: string, row: Row) {
       method: 'POST',
       body: JSON.stringify({ action }),
     })
-    if (!response.ok) {
-      throw new Error('合并清理动作未生效，请稍后重试')
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.message || '合并清理动作未生效，请稍后重试')
     }
     await reload()
+    if (action === '合并文件') await runCheck()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '合并清理操作失败'
   }
@@ -186,3 +215,11 @@ async function reload() {
 
 onMounted(reload)
 </script>
+
+<style scoped>
+.recovery-check { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 12px; padding: 10px 12px; background: #fff; border: 1px solid var(--border); border-radius: 8px; }
+.recovery-check .filter-item span { display: block; font-size: 12px; color: var(--muted); }
+.check-ok { color: #166534; font-size: 12px; margin: 0; width: 100%; }
+.check-block { color: #b42318; font-size: 12px; margin: 0; width: 100%; }
+.check-batches { color: var(--muted); font-size: 12px; margin: 0; width: 100%; }
+</style>

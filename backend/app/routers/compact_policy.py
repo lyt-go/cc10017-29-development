@@ -16,6 +16,7 @@ service = CompactPolicyService()
 
 LIST_FIELDS = ["策略编号", "目标表名", "触发条件", "合并并发", "目标文件大小", "最小文件数", "保留快照数", "执行时间窗口"]
 STATUSES = ["草稿", "待校验", "已生效", "已停用"]
+ACTION_NAMES = ["提交校验", "标记生效", "停用策略", "合并文件"]
 
 
 def query_filters(request: Request) -> dict[str, str]:
@@ -63,6 +64,12 @@ def export_entries(
     return StreamingResponse(
         iter([output.getvalue()]), media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="compact_policy.csv"'})
+
+
+@router.get("/recovery-check")
+def recovery_check(target_table: str = Query(..., description="目标表名")) -> dict:
+    """合并清理核对补数恢复清单：待补区间未完时不放行合并。"""
+    return service.recovery_check(target_table)
 
 
 @router.get("/{entry_id}", response_model=dict)

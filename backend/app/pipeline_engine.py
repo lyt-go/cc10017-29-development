@@ -336,11 +336,14 @@ class PipelineEngine:
         backfill = self._find_by_field("backfill_stream", "目标表名", target_table)
         compact = self._find_by_field("compact_policy", "目标表名", target_table)
         ttl = self._find_by_field("ttl_policy", "目标表名", target_table)
+        recovery = self._recovery_check(target_table)
 
         return {
             "backfill": {"exists": backfill is not None, "status": backfill.get("status") if backfill else None, "entry": backfill},
             "compact_policy": {"exists": compact is not None, "status": compact.get("status") if compact else None, "entry": compact},
             "ttl_policy": {"exists": ttl is not None, "status": ttl.get("status") if ttl else None, "entry": ttl},
+            "recovery": {"manifests": len(recovery["manifests"]), "can_merge": recovery["can_merge"],
+                         "source_batches": recovery["source_batches"], "reasons": recovery["reasons"]},
             "chain_ready": all([
                 backfill is not None and backfill.get("status") == "已完成",
                 compact is not None and compact.get("status") == "已生效",
@@ -605,6 +608,10 @@ class PipelineEngine:
             if str(row.get(field, "")) == str(value):
                 return row
         return None
+
+    def _recovery_check(self, target_table: str) -> dict[str, Any]:
+        from app.services.backfill_recovery import BackfillRecoveryService
+        return BackfillRecoveryService().check_table(target_table)
 
     def _ensure_artifact_table(self, name: str) -> None:
         store.rows(name)  # store.rows会setdefault

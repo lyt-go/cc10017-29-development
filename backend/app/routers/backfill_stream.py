@@ -1,4 +1,4 @@
-"""流式补数 时间线接口：返回作业时间序列结构。"""
+"""流式补数 时间线接口：新增读取订单表补数数据任务并生成补数恢复数据清单。"""
 from __future__ import annotations
 
 import csv
@@ -8,13 +8,15 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from app.schemas import ActionPayload, ActionResult, EntryPayload
+from app.schemas import ActionPayload, ActionResult, EntryPayload, PageResult
+from app.services.backfill_recovery import BackfillRecoveryService
 from app.services.backfill_stream import BackfillStreamService
 
 router = APIRouter(prefix="/api/backfill_stream", tags=["流式补数"])
 service = BackfillStreamService()
+recovery = BackfillRecoveryService()
 LIST_FIELDS = ["任务编号", "目标表名", "起始偏移", "截止偏移", "重放速率", "并行度", "覆盖策略", "结果校验"]
-STATUSES = ["草稿", "运行中", "已完成", "已取消"]
+STATUSES = ["草稿", "运行中", "已中断", "已完成", "已取消"]
 
 
 def csv_cell(value: Any) -> str:
@@ -28,6 +30,39 @@ def csv_cell(value: Any) -> str:
 def list_entries() -> dict[str, Any]:
     items = service.get_timeline()
     return {"items": items}
+
+
+@router.get("/orders/tasks")
+def list_order_backfill_tasks(
+    status: str | None = Query(default=None, description="草稿、运行中、已中断、已完成、已取消"),
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=200),
+) -> dict[str, Any]:
+    """读取订单表补数数据任务：带出已完成偏移与待补区间，供生成恢复清单。"""
+    filters = {"目标表名": "orders"}
+    items, total = service.list_entries(filters=filters, status=status, page=page, size=size)
+    progress = [recovery.find_by_task(str(item.get("任务编号"))) for item in items]
+    rows = []
+    for item, manifest in zip(items, progress):
+        item = dict(item)
+        item["恢复清单"] = manifest.get("清单编号") if manifest else ""
+        item["恢复清单状态"] = manifest.get("status") if manifest else "未生成"
+        rows.append(item)
+    return {"items": rows, "total": total, "page": page, "size": size}
+
+
+@router.post("/orders/recovery")
+def generate_order_recovery() -> ActionResult:
+    """读取订单表补数数据任务并生成补数恢复数据清单。"""
+    created, message = recovery.generate({"目标表名": "orders"})
+    if not created:
+        return ActionResult(ok=False, message=message)
+    tasks = [
+        {"任务编号": item.get("任务编号"), "已完成偏移": item.get("已完成偏移"),
+         "待补区间": item.get("待补区间"), "来源批次": item.get("来源批次")}
+        for item in created
+    ]
+    return ActionResult(ok=True, message=message, entry={"manifest": created, "tasks": tasks})
 
 
 @router.get("/export")

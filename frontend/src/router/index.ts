@@ -16,6 +16,7 @@ const ChangeCapture = () => import('@/views/change_capture/index.vue')
 const CompactPolicy = () => import('@/views/compact_policy/index.vue')
 const StreamLineage = () => import('@/views/stream_lineage/index.vue')
 const BackfillStream = () => import('@/views/backfill_stream/index.vue')
+const BackfillRecovery = () => import('@/views/backfill_recovery/index.vue')
 const SinkDispatch = () => import('@/views/sink_dispatch/index.vue')
 const TtlPolicy = () => import('@/views/ttl_policy/index.vue')
 const RealtimeMetrics = () => import('@/views/realtime_metrics/index.vue')
@@ -39,6 +40,7 @@ const router = createRouter({
     { path: '/compact_policy', name: 'compact_policy', component: CompactPolicy },
     { path: '/stream_lineage', name: 'stream_lineage', component: StreamLineage },
     { path: '/backfill_stream', name: 'backfill_stream', component: BackfillStream },
+    { path: '/backfill_recovery', name: 'backfill_recovery', component: BackfillRecovery },
     { path: '/sink_dispatch', name: 'sink_dispatch', component: SinkDispatch },
     { path: '/ttl_policy', name: 'ttl_policy', component: TtlPolicy },
     { path: '/realtime_metrics', name: 'realtime_metrics', component: RealtimeMetrics },
